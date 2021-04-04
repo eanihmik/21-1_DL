@@ -1,0 +1,416 @@
+---
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE)
+```
+
+<div align="right">
+**\* R 마크다운으로 작성하여 pdf로 변환한 과제입니다. \***
+
+<div align="left">
+#### 1. By using the `RidgeLasso.txt` uploaded in the yscec, we will do simulation studies for lasso and ridge regression for correlated data sets. Use the same true $\beta$ and $\sigma^2$ values in the example code.
+
+##### (a) Simulate correlated data sets, and divide the data sets into training (first 100 observations) and test (rest of 50 observations). Then ﬁt the ordinary linear regression using training data sets. Calculate variance inﬂation factor. Can you detect multicollinearity? (10 point)
+
+```{r 1a-1}
+N <- 150
+P <- 50
+X <- matrix(NA, nrow=N, ncol=P)
+```
+먼저 example code와 동일하게 150 $\times$ 50 matrix *X*를 생성했다.
+
+```{r 1a-2}
+set.seed(50) # for reproductivity
+covmat <- matrix(rnorm(P**2, sd=2), nrow=P)
+covmat <- covmat + t(covmat)
+U <- eigen(covmat)$vectors
+D <- diag(rexp(P, rate=10))
+covmat <- U %*% D %*% t(U)
+```
+Eigenvector, eigenvalue의 definition을 이용해 correlated matrix를 만들기 위해서 $UDU^T$ 꼴의 covariance matrix *covmat*를 만들었다. <br>
+여기서 `rnorm(P**2, sd=2)`는 $N(0, 2^2)$를 따르는 $P^2$개의 랜덤 값들을 반환한다. <br>
+$P = 50$, $P^2 = 2500$이므로 `matrix(rnorm(P**2, sd=2), nrow=P)`는 2500개 값을 50행으로 나눈 matrix, 즉 50 $\times$ 50 matrix가 된다. <br>
+따라서 *U* 또한 50 $\times$ 50 matrix가 되고, diagonal matrix *D*도 50 $\times$ 50이다. <br>
+50 $\times$ 50 matrix 세 개의 행렬곱으로 이루어진 최종 *covmat* 역시 50 $\times$ 50 matrix가 된다.
+
+```{r 1a-3}
+library(mvtnorm)
+
+for(i in 1:N){
+    X[i,] <- rmvnorm(1, mean=rep(0,P), sigma=covmat)
+}
+X <- data.frame(X)
+head(X)
+```
+0 vector와 *covmat*를 parameter로 가지는 multivariate normal distribution을 따르는 랜덤 값들을 *X*의 각 행에 넣고, dataframe 형식으로 변환했다. <br>
+추후 *X*에 *betas.true*를 행렬곱하려면 *X*가 matrix 형태로 남아있어야 하는데, dataframe으로 한번 변환하는 이유는 *X*의 각 column에 X1~X50의 변수명을 붙이기 위해서다.
+
+```{r 1a-4}
+betas.true <- c(1, 2, 3, 4, 5, -1, -2, -3, -4, -5, rep(0, P-10))
+betas.true
+```
+Example code와 동일한 50개의 true betas를 지정했다.
+
+```{r 1a-5}
+sigma <- 15.7
+X <- as.matrix(X)
+y <- X %*% betas.true + rnorm(N, mean=0, sd=sigma)
+y
+```
+$y = X\beta + \epsilon$을 이용해 response vector *y*를 만들었다. <br>
+Noise 항인 $\epsilon$은 $N(0, \sigma^2)$를 따르는 random variable이다. <br>
+이때 $\sigma$ 값은 example code와 같은 15.7을 사용했다. <br>
+
+```{r 1a-6}
+alldata <- data.frame(cbind(y, X))
+names(alldata)[1] <- "y"
+head(alldata)
+```
+Response vector *y*와 predictors X1~X50으로 이루어진 matrix *X*를 *alldata*라는 150 $\times$ 51 dataframe으로 cbind하고, 첫번째 열 이름을 *y*로 바꿨다. <br>
+이때 *X*가 datafame이 matrix로 표현된 형태가 아니었다면 cbind를 했을 때 자동으로 둘째 열부터 시작하는 predictors 열들에 X2~X51의 열 이름이 할당됐을 것이다. <br>
+때문에 앞서 *X*를 dataframe으로 바꿔줬던 것이다.
+
+```{r 1a-7}
+train <- alldata[1:100,]
+test <- alldata[101:150,]
+dim(train); dim(test)
+```
+*alldata*를 100:50으로 train-test-split했다. <br>
+*train*은 100 $\times$ 51, *test*는 50 $\times$ 51 dataframe이 되었다.
+
+```{r 1a-8}
+fit <- lm(y~., data=train)
+summary(fit)
+
+betas.lm <- coef(fit)
+yhat.lm <- predict(fit, newdata=test)
+```
+*train* data를 이용해 ordinary linear regression fit을 구했다. <br>
+*betas.lm*과 *yhat.lm*은 추후에 다른 regression들과 비교할 때 사용하기 위해 미리 뽑아놨다.
+
+```{r 1a-9}
+library(car)
+
+vif <- vif(fit)
+vif; names(vif[vif<10])
+```
+`car` 패키지를 다운받아 VIF 값을 구한 결과다. <br>
+통상적으로 **VIF가 10 이상**일 때 multicollinearity를 지닌다고 보는데, 위 결과 상으로는 **X7, X16, X32를 제외한 모든 predictor**에서 강한 multicollinearity가 나타난다.
+
+##### (b) Using `cv.glmnet` and `glmnet` functions, find the best $\lambda$ value for the ridge regression. Compare the estimated ridge regression coeﬃcients and standard regression coeﬃcients. (10 point)
+
+```{r 1b-1}
+library(glmnet)
+
+rr <- glmnet(x=as.matrix(train[,-1]), y=as.numeric(train[,1]), alpha=0)
+plot(rr, xvar="lambda", main="Ridge Regression Betas for Different Values of the Tuning Parameter")
+```
+
+100개의 $\lambda$ 값을 이용한 ridge regression을 진행했다(`nlambda`는 따로 지정하지 않으면 default 값으로 100이 들어가기 때문에 생략했다). <br>
+`glmnet()` 함수에서 `alpha=0`으로 지정해주면 ridge regression을, `alpha=1`로 지정해주면 LASSO regression을 수행할 수 있다. <br>
+결과를 나타낸 plot에서 볼 수 있듯, finite한 $\lambda$ 값에서 ridge regression의 coefficient는 완전히 0이 될 수는 없다.
+
+```{r 1b-2}
+cv.rr <- cv.glmnet(x=as.matrix(train[,-1]), y=as.numeric(train[,1]), alpha=0, nfolds=10)
+lambda.rr <- cv.rr$lambda.min
+lambda.rr; log(lambda.rr)
+
+yhat.rr <- predict(cv.rr, s="lambda.min", newx=as.matrix(test[,-1]))
+```
+최적의 $\lambda$ 값을 찾기 위해 cross-validation을 수행해주는 함수 `cv.glmnet()`을 실행했다. <br>
+`nfolds=10`으로 지정해 10-fold cross-validation을 수행했다. <br>
+`lambda.min`은 mean cross-validated error **cvm을 최소로 만드는 최적의 $\lambda$ 값**을 계산해 주는데, 여기서는 **73.08073**가 나왔다. <br>
+$\log(\lambda)$ 값은 4.291565다. <br>
+*yhat.rr*은 추후에 다른 regression들과 비교할 때 사용하기 위해 미리 뽑아놨다.
+
+```{r 1b-3}
+par(mfrow=c(1,2))
+plot(cv.rr, main="Ridge Regression Errors")
+abline(v=log(lambda.rr))
+plot(rr, xvar="lambda", main="Ridge Regression Betas")
+abline(v=log(lambda.rr))
+```
+
+Cross-validation 결과와 좀 전에 구한 regression coefficients 결과에 최적 $\log(\lambda)$ 값을 나타내 주었다. <br>
+실선으로 그려진 $\log(\lambda)=4.291565$에서 error가 최소가 된다는 걸 알아볼 수 있다.
+
+```{r 1b-4}
+betas.rr <- coef(cv.rr, s="lambda.min")
+cbind(betas.rr, betas.lm)
+```
+Ridge regression을 통해 구한 coefficients *betas.rr*과 ordinary linear regression을 통해 구한 coefficients *betas.lm*을 나란히 출력했다. <br>
+한눈에 비교하기 어려우니 plot을 그려보겠다.
+
+```{r 1b-5}
+plot(betas.rr, betas.lm, xlim=c(-6,6), ylim=c(-6,6))
+abline(0, 1)
+```
+
+*betas.lm* 값들에 비해 *betas.rr* 값들이 훨씬 **분포하는 범위가 좁고, 0 주변에 집중되어 있다(절대값이 작다)**.
+
+##### (c) Repeat (b) for lasso regression. Compare the estimated lasso regression coefficients and standard regression coefficients. (10 point)
+
+```{r 1c-1}
+lasso <- glmnet(x=as.matrix(train[,-1]), y=as.numeric(train[,1]), alpha=1)
+plot(lasso, xvar="lambda", main="LASSO Regression Betas for Different Values of the Tuning Parameter")
+```
+
+`alpha=1`로 지정해 LASSO regression을 수행했다.
+
+```{r 1c-2}
+par(mfrow=c(1,2))
+plot(rr, xvar="lambda",main="Ridge")
+plot(lasso, xvar="lambda", main="LASSO")
+```
+
+LASSO regression은 ridge regression과 달리 특정 $\lambda$ 값에서 coefficients가 0이 되기도 한다.
+
+```{r 1c-3}
+cv.lasso <- cv.glmnet(x=as.matrix(train[,-1]), y=as.numeric(train[,1]), alpha=1, nfolds=10)
+lambda.lasso <- cv.lasso$lambda.min
+lambda.lasso; log(lambda.lasso)
+
+yhat.lasso <- predict(cv.lasso, s="lambda.min", newx=as.matrix(test[,-1]))
+```
+LASSO regression에도 10-fold cross-validation을 수행했다. <br>
+최적의 $\lambda$ 값은 **2.284296**이 나왔고, 로그 값은 0.8260578이다. <br>
+여기서도 *yhat.lasso* 값을 뽑아놨다.
+
+```{r 1c-4}
+par(mfrow=c(1,2))
+plot(cv.lasso, main="LASSO Regression Errors")
+abline(v=log(lambda.lasso))
+plot(lasso, xvar="lambda", main="LASSO Regression Betas")
+abline(v=log(lambda.lasso))
+```
+
+Cross-validation 결과 plot과 regression coefficients 결과 plot에 실선 $\log(\lambda)=0.8260578$을 그렸다. <br>
+*lambda.lasso*는 error를 가장 작게 만드는 $\lambda$ 값임을 확인할 수 있다.
+
+```{r 1c-5}
+betas.lasso <- coef(cv.lasso, s="lambda.min")
+betas.lasso
+```
+LASSO regression으로 구해진 coefficients를 출력해 보았다. <br>
+Plot에서 확인했던 것처럼 LASSO regression에서는 coefficients를 완전히 0으로 만들어버리는 $\lambda$ 값들이 존재한다.
+
+```{r 1c-6}
+plot(betas.lasso, betas.lm, xlim=c(-6,6), ylim=c(-6,6))
+abline(0, 1)
+```
+
+*betas.lm*과 함께 나타낸 plot에서도 LASSO regression이 특정 coefficients를 0으로 보낸다는 사실을 확인할 수 있다. <br>
+따라서 **ordinary linear regression에서보다 coefficients의 절대값이 더 작다**는 특징이 ridge regression을 했을 때보다 더 두드러진다.
+
+##### (d) Repeat (b) for *alpha* = 0.5 in `glmnet` and `cv.glmnet` functions. This is called elastic net regularization, which combines $l_1$ and $l_2$ penalties (see details in wikipedia). Write down the objective function of elastic net. What is the advantage of elastic net over lasso? (20 point)
+
+```{r 1d-1}
+en <- glmnet(x=as.matrix(train[,-1]), y=as.numeric(train[,1]), alpha=0.5)
+plot(en, xvar="lambda", main="Elastic Net Regression Betas for Different Values of the Tuning Parameter")
+```
+
+```{r 1d-2}
+cv.en <- cv.glmnet(x=as.matrix(train[,-1]), y=as.numeric(train[,1]), alpha=0.5, nfolds=10)
+lambda.en <- cv.en$lambda.min
+lambda.en; log(lambda.en)
+
+yhat.en <- predict(cv.en, s="lambda.min", newx=as.matrix(test[,-1]))
+```
+Elastic net regression의 경우 10-fold cross-validation을 수행해 산출한 최적의 $\lambda$ 값은 **5.502885**, 로그 값은 1.705273이다. <br>
+역시 *yhat.en* 값을 뽑아놨다.
+
+```{r 1d-3}
+par(mfrow=c(1,2))
+plot(cv.en, main="Elastic Net Regression Errors")
+abline(v=log(lambda.en))
+plot(en, xvar="lambda", main="Elastic Net Regression Betas")
+abline(v=log(lambda.en))
+```
+
+```{r 1d-4}
+betas.en <- coef(cv.en, s="lambda.min")
+betas.en
+```
+Elastic net regression으로 구한 coefficients다. <br>
+LASSO처럼 coefficients가 0이 되는 경우가 존재한다.
+
+```{r 1d-5}
+plot(betas.en, betas.lm, xlim=c(-6,6), ylim=c(-6,6))
+abline(0, 1)
+```
+
+Ordinary linear regression에서보다 coefficients의 절대값이 더 작다는 특징이 ridge regression은 물론 **LASSO regression에서보다도 더 두드러진다**. <br>
+LASSO에서보다 **feature selection**이 더 많이 이루어졌다는 뜻이다. <br>
+<br>
+Elastic net의 objective function은 $\hat{\beta} \equiv \underset\beta{\operatorname{argmin}}(\|y-X\beta\|^2 + \lambda_2\|\beta\|^2 + \lambda_1\|\beta\|_1)$ 이다. <br>
+해당 문제에서는 딱히 나타나지 않은 단점이지만, LASSO regression에서 사용하는 penalty function의 경우 맥락을 고려하지 않은 과도한 feature selection으로 효과적인 regression이 수행되지 않을 때가 있다. <br>
+특히, 작은 n을 가지는 high-dimensional data가 있을 때 더욱 그러하다. n이 작으면 해석에 필요한 predictor도 coefficient를 0으로 만들어버릴 가능성이 높기 때문이다. <br>
+반면 elastic net regression에서는, objective function에서 볼 수 있듯 ridge regression에서 사용하는 penalty function을 혼합시켜, LASSO penalty function만을  사용할 때 필요한 coefficient까지 제거될 수 있다는 문제점을 보완한다.
+
+##### (e) Compare the mean square prediction errors (mspe) for linear model, lasso, ridge, and elastic net. (10 point)
+```{r 1e}
+mspe.lm <- mean((test$y-yhat.lm)**2)
+mspe.rr <- mean((test$y-yhat.rr)**2)
+mspe.lasso <- mean((test$y-yhat.lasso)**2)
+mspe.en <- mean((test$y-yhat.en)**2)
+
+mspe.lm; mspe.rr; mspe.lasso; mspe.en
+```
+앞서 빼두었던 *yhat.lm*, *yhat.rr*, *yhat.lasso*, *yhat.en*을 대입해 각 regression의 MSPE를 구했다. <br>
+결과는 elastic net regression < LASSO regression <= ridge regression <<< ordinary linear regression 순으로 MSPE가 낮았다.
+
+#### 2. In HW1, we analyzed `BrainTumor.csv` in a logistic regression context. In this problem, we will compare the performance of (1) standard logistic regression, (2) logistic regression with lasso penalty, and (3) logistic regression with ridge penalty.
+
+##### (a) As in HW1, scale 12 feature variables and divide the data into training (70%) and test (30%) sets. Then ﬁt a standard logistic regression. (10 point)
+
+```{r 2a}
+tumor <- read.csv('BrainTumor.csv')
+attach(tumor)
+
+for (colname in colnames(tumor)[-1]) {
+  tumor[colname] <- scale(tumor[colname], center=TRUE, scale=TRUE)
+}
+
+set.seed(59)
+size <- dim(tumor)[1]
+train_idx <- sample(1:size, size=0.7*size, replace=FALSE)
+tumor_train <- tumor[train_idx, ]
+tumor_test <- tumor[-train_idx, ]
+
+tumor_fit <- glm(Class~Mean+Variance+Standard.Deviation+Entropy+Skewness+Kurtosis+
+                   Contrast+Energy+ASM+Homogeneity+Dissimilarity+Correlation,
+                 family="binomial", data=tumor_train)
+
+summary(tumor_fit)
+```
+HW1의 코드를 그대로 가져와 변수명만 수정했다. <br>
+Standard logistic regression을 fit한 결과다.
+
+##### (b) Fit a logistic regression with lasso penalty using training data set. Describe ﬁtting procedure (draw cross-validation plot for lambda, ﬁnd the best $\lambda$ value, report estimated regression coefficients.) (10 point)
+
+```{r 2b-1}
+tumor_lasso <- glmnet(x=as.matrix(tumor_train[,-1]), y=as.factor(tumor_train[, 1]), family="binomial", alpha=1)
+plot(tumor_lasso, xvar="lambda", main="Logistic Regression with LASSO Penalty")
+```
+
+`glmnet()`에 `family="binomial"` hyperparameter를 넣어 *tumor_train* data로 LASSO regression fit을 구했다. <br>
+plot은 위와 같은 모양이 나온다.
+
+```{r 2b-2}
+cv.tumor_lasso <- cv.glmnet(x=as.matrix(tumor_train[,-1]), y=as.factor(tumor_train[, 1]), family="binomial", alpha=1, nfolds=10)
+lambda.tumor_lasso <- cv.tumor_lasso$lambda.min
+lambda.tumor_lasso; log(lambda.tumor_lasso)
+```
+10-fold cross-validation을 수행하고, error를 최소화하는 최적 $\lambda$ 값을 구했다. <br>
+최적 $\lambda$ 값은 **0.0002525363**다.
+
+```{r 2b-3}
+betas.tumor_lasso <- coef(cv.tumor_lasso, s="lambda.min")
+betas.tumor_lasso
+```
+최적 $\lambda$ 값을 이용해 추정한 coefficients다. <br>
+Feature selection을 통해 Entropy 변수가 제거되었다.
+
+```{r 2b-4}
+par(mfrow=c(1,2))
+plot(cv.tumor_lasso, main="LASSO Regression Errors")
+abline(v=log(lambda.tumor_lasso))
+plot(tumor_lasso, xvar="lambda", main="LASSO Regression Betas")
+abline(v=log(lambda.tumor_lasso))
+```
+
+$\log(\lambda)$별 error와 coefficient, 그리고 최적 $\lambda$ 값의 위치를 plot으로 나타냈다.
+
+##### (c) Fit a logistic regression with ridge penalty using training data set. Describe ﬁtting procedure (draw cross-validation plot for lambda, find the best $\lambda$ value, report estimated regression coefficients.) (10 point)
+
+```{r 2c-1}
+tumor_ridge <- glmnet(x=as.matrix(tumor_train[,-1]), y=as.factor(tumor_train[, 1]), family="binomial", alpha=0)
+plot(tumor_ridge, xvar="lambda", main="Logistic Regression with Ridge Penalty")
+```
+
+`alpha=0`으로 바꿔 ridge penalty를 사용하는 logistic regression plot을 그렸다.
+
+```{r 2c-2}
+cv.tumor_ridge <- cv.glmnet(x=as.matrix(tumor_train[,-1]), y=as.factor(tumor_train[, 1]), family="binomial", alpha=0, nfolds=10)
+lambda.tumor_ridge <- cv.tumor_ridge$lambda.min
+lambda.tumor_ridge; log(lambda.tumor_ridge)
+```
+Ridge regression에서 최적 $\lambda$ 값은 **0.04311685**,
+
+``` {r 2c-3}
+betas.tumor_ridge <- coef(cv.tumor_ridge, s="lambda.min")
+betas.tumor_ridge
+```
+추정된 coefficients는 위와 같이 계산된다.
+
+```{r 2c-4}
+par(mfrow=c(1,2))
+plot(cv.tumor_ridge, main="Ridge Regression Errors")
+abline(v=log(lambda.tumor_ridge))
+plot(tumor_ridge, xvar="lambda", main="Ridge Regression Betas")
+abline(v=log(lambda.tumor_ridge))
+```
+
+$\log(\lambda)$별 error와 coefficients 결과를 plot하고 앞서 구한 $\log(\lambda)=-3.143841$을 실선으로 표시했다.
+
+##### (d) Using the ﬁtted models above (a)-(c), predict a response (Class) for test data sets. For predicted value, assign 1 class (Tumor) if predicted mean probability is greater than or equal to 0.5 (otherwise, assign 0 class (Non-Tumor)). For binary classiﬁcation problem, we can deﬁne prediction accuracy as
+
+<div align="center"> (True positive + True negative)/test data sample size.
+
+##### A true positive is an outcome where the model correctly predicts the "Tumor" class. Similarly, a true negative is an outcome where the model correctly predicts the "Non-Tumor" class. Compare the prediction accuracy of the three diﬀerent models. (10 point)
+
+```{r 2d-1}
+yhat.tumor_lm <- predict(tumor_fit, newdata=tumor_test, type="response")
+yhat.tumor_lasso <- predict(cv.tumor_lasso, s="lambda.min", newx=as.matrix(tumor_test[,-1]), type="response")
+yhat.tumor_ridge <- predict(cv.tumor_ridge, s="lambda.min", newx=as.matrix(tumor_test[,-1]), type="response")
+
+head(cbind(yhat.tumor_lm, yhat.tumor_lasso, yhat.tumor_ridge))
+```
+`predict()` 함수에 `type="response"`를 지정해 각 regression의 mean probability 값들을 계산했다.
+
+```{r 2d-2}
+pred.tumor_lm <- rep(NA, length(yhat.tumor_lm))
+for (idx in (1:length(yhat.tumor_lm))) {
+  if (yhat.tumor_lm[idx] >= 0.5) {
+    pred.tumor_lm[idx] <- 1
+  } else {
+    pred.tumor_lm[idx] <- 0}
+}
+
+pred.tumor_lasso <- rep(NA, dim(yhat.tumor_lasso)[1])
+for (idx in (1:dim(yhat.tumor_lasso)[1])) {
+  if (yhat.tumor_lasso[idx, 1] >= 0.5) {
+    pred.tumor_lasso[idx] <- 1
+  } else {
+    pred.tumor_lasso[idx] <- 0}
+}
+
+pred.tumor_ridge <- rep(NA, dim(yhat.tumor_ridge)[1])
+for (idx in (1:dim(yhat.tumor_ridge)[1])) {
+  if (yhat.tumor_ridge[idx, 1] >= 0.5) {
+    pred.tumor_ridge[idx] <- 1
+  } else {
+    pred.tumor_ridge[idx] <- 0}
+}
+
+head(cbind(pred.tumor_lm, pred.tumor_lasso, pred.tumor_ridge), 10); head(tumor_test[,1], 10)
+```
+각각의 regression에 대해 NA로 이루어진 *yhat* 길이의 *pred* vector를 생성한 뒤, *yhat*의 값이 0.5 이상인 index의 *pred*에는 1을, 미만인 index의 *pred*에는 0을 넣어 vector 세 개를 완성했다. <br>
+완성된 vector들의 첫 10개 값들과 실제 *tumor_test* data의 첫 10개 true y 값들을 비교해보니 거의 동일했다.
+
+``` {r 2d-3}
+accuracy.lm <- sum(pred.tumor_lm == tumor_test[,1])/dim(tumor_test)[1]
+accuracy.lasso <- sum(pred.tumor_lasso == tumor_test[,1])/dim(tumor_test)[1]
+accuracy.ridge <- sum(pred.tumor_ridge == tumor_test[,1])/dim(tumor_test)[1]
+
+accuracy.lm; accuracy.lasso; accuracy.ridge
+```
+prediction accuracy의 분자인 (true positive + true negative)의 개수는 *pred* vector와 true y 값이 같은지 판별하는 boolean function의 TRUE(1로 계산) 합계로 구할 수 있다. <br>
+분모인 test data sample size로 각각의 합계를 나눠주면 최종 accuracy를 구할 수 있다. <br>
+그렇게 해서 얻어진 최종 accuracy 값은 다음과 같다. <br>
+**Standard Logistic Regression: 약 98.67%** <br>
+**Logistic Regression with LASSO Penalty: 약 98.23%** <br>
+**Logistic Regression with Ridge Penalty: 약 97.08%**
