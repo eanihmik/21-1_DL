@@ -1,7 +1,7 @@
-- HW1 <br>
+- **HW 1** <br>
 `stock.csv` <br>
 `BrainTumor.csv`
 
-- HW4 <br>
+- **HW 4** <br>
 `healthTrain.csv` <br>
 `healthTest.csv`
