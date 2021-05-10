@@ -1,0 +1,273 @@
+---
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, fig.width=10, fig.height=10)
+```
+
+<div align="right">
+**\* R 마크다운으로 작성하여 pdf로 변환한 과제입니다. \***
+
+<div align="left">
+#### **1. Consider the `wines` data that we covered in the lecture. Conduct Kohonen's SOM by varying dimensions of output ($2 \times 2$, $4 \times 4$, $6 \times 6$, $10 \times 10$). Explain how it changes with increasing number of grids and what do you think is the appropriate number of grids? Can you fit SOM for $14 \times 14$ grids for this example? If not why? (30 point)**
+
+```{r 1-1}
+library(kohonen)
+data(wines)
+?wines
+```
+<div align="center">
+![](C:/Users/sec/Desktop/나/2021/딥러닝/과제/wines.png)
+
+<div align="left">
+```{r 1-2}
+head(wines)
+dim(wines)
+```
+`kohonen` 패키지의 `wine` 데이터를 열고 몇 가지 간단한 정보를 알아보았다. 해당 데이터는 177개 와인에 대한 정보가 13가지 변수로 저장되어 있다. Kohonen SOM은 unsupervised learning의 일종이므로 데이터에 output 변수는 따로 없다.
+
+```{r 1-3}
+wines <- scale(wines)
+head(wines)
+```
+SOM을 진행하기 전에 각 변수를 0 중심으로 scaling해주기 위해 `scale()` 함수를 사용했다.
+
+```{r 1-4}
+som2.wines <- som(wines, grid=somgrid(2, 2, "hexagonal"))
+som4.wines <- som(wines, grid=somgrid(4, 4, "hexagonal"))
+som6.wines <- som(wines, grid=somgrid(6, 6, "hexagonal"))
+som10.wines <- som(wines, grid=somgrid(10, 10, "hexagonal"))
+```
+Output의 크기가 $2 \times 2$, $4 \times 4$, $6 \times 6$, $10 \times 10$인 SOM을 fitting했다. Grid 모양은 강의와 동일한 hexagonal neighborhood를 사용했다.
+
+```{r 1-5}
+par(mfrow=c(2, 2))
+plot(som2.wines, main="2 x 2")
+plot(som4.wines, main="4 x 4")
+plot(som6.wines, main="6 x 6")
+plot(som10.wines, main="10 x 10")
+```
+
+네 가지 grid 크기의 SOM을 plot으로 나타냈다. 각각 지정해준 개수의 뉴런으로 clustering된 걸 확인할 수 있다. <br>
+Grid의 개수가 늘어날수록 177개의 데이터가 분류되는 **뉴런의 개수가 늘어난다.** <br>
+뉴런의 개수가 너무 적을 땐 한 뉴런이 가지는 특성이 뚜렷하지 않아 변수에 관한 정보를 제대로 담기 어렵고,<br>
+뉴런의 개수가 너무 많을 땐 clustering을 하는 의미가 없다. <br>
+위 데이터에서는 **$4 \times 4$**가 가장 적정한 수준의 grid 개수로 보인다. <br>
+$14 \times 14=196$은 **177보다 크다**. 177개 데이터가 196개 뉴런으로 분류되는 건 말이 안되므로, $14 \times 14$ dimension SOM으로 fit하는 건 **불가능하다**.
+
+<div align="left">
+#### **2. Consider the neural network with initialized weights $w_1=0.7$, $w_2=0.9$, $w_3=0.5$, $w_4=0.3, $w_5=0.8$, $w_6=0.5$. We are using the sigmoid activation functions between layers. We use the input values with $i_1=2.5$, $i_2=0.5$ and the target values as $y_1=1$, $y_2=1$. For this problem, you will make forward and backpropagation calculations as in `DL8`, `Backprop.txt`.**
+
+<div align="center">
+![NN Structure](C:/Users/sec/Desktop/나/2021/딥러닝/과제/backprop.png)
+
+<div align="left">
+```{r 2}
+w1 <- 0.7
+w2 <- 0.9
+w3 <- 0.5
+w4 <- 0.3
+w5 <- 0.8
+w6 <- 0.5
+w <- c(w1, w2, w3, w4, w5, w6)
+
+i1 <- 2.5
+i2 <- 0.5
+i <- c(i1, i2)
+
+y1 <- 1
+y2 <- 1
+y <- c(y1, y2)
+
+sigmoid <- function(z){
+  return(1/(1+exp(-z)))
+}
+```
+주어진 값들로 이루어진 weight parameters, input values, target values 벡터들과 sigmoid activation function을 사전에 정의해 두었다.
+
+##### **(a) In `Backprop.txt` code, I have made `forwardProp` function based on the neural network in `DL8`. Similarly, create `forwardProp` function based on the neural network in this HW problem. (15 point)**
+
+```{r 2a-1}
+forwardProp <- function(i, w) {
+  # hidden layer calculation
+  neth1 <- w[1]*i[1]
+  neth2 <- w[2]*i[1]+w[3]*i[2]
+  outh1 <- sigmoid(neth1)
+  outh2 <- sigmoid(neth2)
+  
+  # output calculation
+  neto1 <- w[4]*outh1
+  neto2 <- w[5]*outh1+w[6]*outh2
+  outo1 <- sigmoid(neto1)
+  outo2 <- sigmoid(neto2)
+  
+  # results
+  res <- c(outh1, outh2, outo1, outo2)
+  return(res)
+}
+```
+[NN Structure] 그림과 같은 구조를 가진 neural network의 forward pass function을 정의했다. <br>
+Hidden layer의 계산은 다음과 같다. <br>
+$net_{h1} = w_1 \times i_1$ <br>
+$net_{h2} = w_2 \times i_1 + w_3 \times i_2$ <br>
+$out_{h1} = \frac{1}{1+e^{-net_{h1}}}$ <br>
+$out_{h2} = \frac{1}{1+e^{-net_{h2}}}$ <br>
+Output의 계산은 다음과 같다. <br>
+$net_{o1} = w_4 \times out_{h1}$ <br>
+$net_{o2} = w_5 \times out_{h1} + w_6 \times out_{h2}$ <br>
+$out_{o1} = \frac{1}{1+e^{-net_{o1}}}$ <br>
+$out_{o2} = \frac{1}{1+e^{-net_{o2}}}$
+
+```{r 2a-2}
+error <- function(res, y){
+  err <- 0.5*(y[1] - res[3])^2 + 0.5*(y[2] - res[4])^2
+  return(err)
+}
+```
+이때 error function은 다음과 같다. <br>
+$E = \frac{1}{2}(y_1-out_{o1})^2 + \frac{1}{2}(y_2-out_{o2})^2$
+
+##### **(b) In `Backprop.txt` code, I have made backpropagation update code based on the neural network in `DL8`. Similarly, create backpropagation update code based on the neural network in this HW problem. (40 point)**
+
+```{r 2b-1}
+backProp <- function(i, w, y, gamma, numItr){
+  err <- c() # empty vector of errors
+  
+  for(n in 1:numItr) {
+    res <- forwardProp(i, w)
+    err[n] <- error(res, y)
+    
+    outh1 <- res[1]; outh2 <- res[2]; outo1 <- res[3]; outo2 <- res[4]
+    
+    # w4
+    dE_douto1 <- -(y[1] - outo1)
+    douto1_dneto1 <- outo1*(1-outo1)
+    dneto1_dw4 <- outh1
+    dE_dw4 <- dE_douto1*douto1_dneto1*dneto1_dw4
+    
+    # w5
+    dE_douto2 <- -(y[2] - outo2)
+    douto2_dneto2 <- outo2*(1-outo2)
+    dneto2_dw5 <- outh1
+    dE_dw5 <- dE_douto2*douto2_dneto2*dneto2_dw5
+    
+    # w6
+    dneto2_dw6 <- outh2
+    dE_dw6 <- dE_douto2*douto2_dneto2*dneto2_dw6
+    
+    # w1
+    dEo1_douto1 <- -(y[1]-outo1)
+    dneto1_douth1 <- w[4]
+    dEo1_douth1 <- dEo1_douto1*douto1_dneto1*dneto1_douth1
+
+    dEo2_douto2 <- -(y[2]-outo2)
+    dneto2_douth1 <- w[5]
+    dEo2_douth1 <- dEo2_douto2*douto2_dneto2*dneto2_douth1
+
+    dE_douth1 <- dEo1_douth1 + dEo2_douth1
+
+    douth1_dneth1 <- outh1*(1-outh1)
+
+    dneth1_dw1 <- i[1]
+
+    dE_dw1 <- dE_douth1*douth1_dneth1*dneth1_dw1
+    
+    # w2
+    dneto1_douth2 <- 0
+    dEo1_douth2 <- dEo1_douto1*douto1_dneto1*dneto1_douth2
+
+    dneto2_douth2 <- w[6]
+    dEo2_douth2 <- dEo2_douto2*douto2_dneto2*dneto2_douth2
+
+    dE_douth2 <- dEo1_douth2 + dEo2_douth2
+
+    douth2_dneth2 <- outh2*(1-outh2)
+
+    dneth2_dw2 <- i[1]
+
+    dE_dw2 <- dE_douth2*douth2_dneth2*dneth2_dw2
+    
+    # w3
+    dneth2_dw3 <- i[2]
+
+    dE_dw3 <- dE_douth2*douth2_dneth2*dneth2_dw3
+    
+    # update
+    w1 <- w1 - gamma*dE_dw1
+    w2 <- w2 - gamma*dE_dw2
+    w3 <- w3 - gamma*dE_dw3
+    w4 <- w4 - gamma*dE_dw4
+    w5 <- w5 - gamma*dE_dw5
+    w6 <- w6 - gamma*dE_dw6
+    
+    w <- c(w1, w2, w3, w4, w5, w6)
+  }
+  
+  return (c(err, res))
+}
+
+```
+Input 값을 i, weight parameter들을 w, target 값들을 y, learning rate를 gamma, iteration 수를 numItr로 받아 error값들과 $out_{h1}$, $out_{h2}$, $out_{o1}$, $out_{o2}$ 값들을 반환하는 함수 `backProp`를 생성했다.
+
+<div align="left">
+#### (도출 식)
+#### w4
+$\frac{\partial E}{\partial w_4} = \frac{\partial E}{\partial out_{o1}} \frac{\partial out_{o1}}{\partial net_{o1}} \frac{\partial net_{o1}}{\partial w_4}$ <br>
+$\frac{\partial E}{\partial out_{o1}} = -(y_1-out_{o1})$, $\frac{\partial out_{o1}}{\partial net_{o1}} = out_{o1}(1-out_{o1})$, $\frac{\partial net_{o1}}{\partial w_4} = out_{h1}$
+
+#### w5
+$\frac{\partial E}{\partial w_5} = \frac{\partial E}{\partial out_{o2}} \frac{\partial out_{o2}}{\partial net_{o2}} \frac{\partial net_{o2}}{\partial w_5}$ <br>
+$\frac{\partial E}{\partial out_{o2}} = -(y_2-out_{o2})$, $\frac{\partial out_{o2}}{\partial net_{o2}} = out_{o2}(1-out_{o2})$, $\frac{\partial net_{o2}}{\partial w_5} = out_{h1}$
+
+#### w6
+$\frac{\partial E}{\partial w_6} = \frac{\partial E}{\partial out_{o2}} \frac{\partial out_{o2}}{\partial net_{o2}} \frac{\partial net_{o2}}{\partial w_6}$ <br>
+$\frac{\partial E}{\partial out_{o2}} = -(y_2-out_{o2})$, $\frac{\partial out_{o2}}{\partial net_{o2}} = out_{o2}(1-out_{o2})$, $\frac{\partial net_{o2}}{\partial w_6} = out_{h2}$
+
+#### w1
+$\frac{\partial E}{\partial w_1} = \frac{\partial E}{\partial out_{h1}} \frac{\partial out_{h1}}{\partial net_{h1}} \frac{\partial net_{h1}}{\partial w_1}$ <br>
+$\frac{\partial E}{\partial out_{h1}} = \frac{\partial E_{o1}}{\partial out_{h1}} + \frac{\partial E_{o2}}{\partial out_{h1}}$ <br>
+$\frac{\partial E_{o1}}{\partial out_{h1}} = \frac{\partial E_{o1}}{\partial out_{o1}} \frac{\partial out_{o1}}{\partial net_{o1}} \frac{\partial net_{o1}}{\partial out_{h1}}$ <br>
+$\frac{\partial E_{o1}}{\partial out_{o1}} = -(y_1-out_{o1})$, $\frac{\partial out_{o1}}{\partial net_{o1}} = out_{o1}(1-out_{o1})$, $\frac{\partial net_{o1}}{\partial out_{h1}} = w_4$ <br>
+$\frac{\partial E_{o2}}{\partial out_{h1}} = \frac{\partial E_{o2}}{\partial out_{o2}} \frac{\partial out_{o2}}{\partial net_{o2}} \frac{\partial net_{o2}}{\partial out_{h1}}$ <br>
+$\frac{\partial E_{o2}}{\partial out_{o2}} = -(y_2-out_{o2})$, $\frac{\partial out_{o2}}{\partial net_{o2}} = out_{o2}(1-out_{o2})$, $\frac{\partial net_{o2}}{\partial out_{h1}} = w_5$ <br>
+$\frac{\partial out_{h1}}{\partial net_{h1}} = out_{h1}(1-out_{h1})$, $\frac{\partial net_{h1}}{\partial w_1} = i_1$
+
+#### w2
+$\frac{\partial E}{\partial w_2} = \frac{\partial E}{\partial out_{h2}} \frac{\partial out_{h2}}{\partial net_{h2}} \frac{\partial net_{h2}}{\partial w_2}$ <br>
+$\frac{\partial E}{\partial out_{h2}} = \frac{\partial E_{o1}}{\partial out_{h2}} + \frac{\partial E_{o2}}{\partial out_{h2}}$ <br>
+$\frac{\partial E_{o1}}{\partial out_{h2}} = \frac{\partial E_{o1}}{\partial out_{o1}} \frac{\partial out_{o1}}{\partial net_{o1}} \frac{\partial net_{o1}}{\partial out_{h2}}$ <br>
+$\frac{\partial E_{o1}}{\partial out_{o1}} = -(y_1-out_{o1})$, $\frac{\partial out_{o1}}{\partial net_{o1}} = out_{o1}(1-out_{o1})$, $\frac{\partial net_{o1}}{\partial out_{h2}} = 0$ <br>
+$\frac{\partial E_{o2}}{\partial out_{h2}} = \frac{\partial E_{o2}}{\partial out_{o2}} \frac{\partial out_{o2}}{\partial net_{o2}} \frac{\partial net_{o2}}{\partial out_{h2}}$ <br>
+$\frac{\partial E_{o2}}{\partial out_{o2}} = -(y_2-out_{o2})$, $\frac{\partial out_{o2}}{\partial net_{o2}} = out_{o2}(1-out_{o2})$, $\frac{\partial net_{o2}}{\partial out_{h2}} = w_6$ <br>
+$\frac{\partial out_{h2}}{\partial net_{h2}} = out_{h2}(1-out_{h2})$, $\frac{\partial net_{h2}}{\partial w_2} = i_1$
+
+#### w3
+$\frac{\partial E}{\partial w_3} = \frac{\partial E}{\partial out_{h2}} \frac{\partial out_{h2}}{\partial net_{h2}} \frac{\partial net_{h2}}{\partial w_3}$ <br>
+$\frac{\partial E}{\partial out_{h2}} = \frac{\partial E_{o1}}{\partial out_{h2}} + \frac{\partial E_{o2}}{\partial out_{h2}}$ <br>
+$\frac{\partial E_{o1}}{\partial out_{h2}} = \frac{\partial E_{o1}}{\partial out_{o1}} \frac{\partial out_{o1}}{\partial net_{o1}} \frac{\partial net_{o1}}{\partial out_{h2}}$ <br>
+$\frac{\partial E_{o1}}{\partial out_{o1}} = -(y_1-out_{o1})$, $\frac{\partial out_{o1}}{\partial net_{o1}} = out_{o1}(1-out_{o1})$, $\frac{\partial net_{o1}}{\partial out_{h2}} = 0$ <br>
+$\frac{\partial E_{o2}}{\partial out_{h2}} = \frac{\partial E_{o2}}{\partial out_{o2}} \frac{\partial out_{o2}}{\partial net_{o2}} \frac{\partial net_{o2}}{\partial out_{h2}}$ <br>
+$\frac{\partial E_{o2}}{\partial out_{o2}} = -(y_2-out_{o2})$, $\frac{\partial out_{o2}}{\partial net_{o2}} = out_{o2}(1-out_{o2})$, $\frac{\partial net_{o2}}{\partial out_{h2}} = w_6$ <br>
+$\frac{\partial out_{h2}}{\partial net_{h2}} = out_{h2}(1-out_{h2})$, $\frac{\partial net_{h2}}{\partial w_3} = i_2$
+
+##### **(c) Try 3 different learning rates($\gamma=0.1$, $\gamma=0.6$, $\gamma=1.2$), and repeat forward/back propagation 1,000 iterations. Draw error rate figure, and calculate prediction results as in the page 37-38 of the `DL8` slide. Discuss about the convergence of neural network fittings based on different learning rates. (15 point)**
+
+```{r 2c-1}
+lr1 <- backProp(i, w, y, 0.1, 1000)
+lr6 <- backProp(i, w, y, 0.6, 1000)
+lr12 <- backProp(i, w, y, 1.2, 1000)
+
+plot(1:1000, lr1[1:1000], xlab="Iterations", ylab="Error", type="l", col="tomato1")
+lines(1:1000, lr6[1:1000], col="skyblue4")
+lines(1:1000, lr12[1:1000], col="limegreen")
+legend("topright", legend=c(expression(paste(gamma, " = 0.1")), expression(paste(gamma, " = 0.6")), expression(paste(gamma, " = 1.2"))), fill=c("tomato1", "skyblue4", "limegreen"), cex=2, title="Learning Rate")
+```
+
+```{r 2c-2}
+o1 <- c(lr1[1003], lr6[1003], lr12[1003])
+o2 <- c(lr1[1004], lr6[1004], lr12[1004])
+df <- data.frame(cbind(c(0.1, 0.6, 1.2), o1, o2))
+colnames(df) <- c("gamma", "pred_o1", "pred_o2")
+df
+```
