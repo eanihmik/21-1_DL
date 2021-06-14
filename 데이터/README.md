@@ -11,3 +11,6 @@ https://drive.google.com/file/d/1eFT8602ARAYvyW6_QHjVGzhgylY06cjM/view?usp=shari
 
 - **HW6** <br>
 `case.csv`
+
+- **파이널** <br>
+https://www.kaggle.com/gpiosenka/gender-classification-from-an-image?select=valid
