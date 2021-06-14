@@ -5,5 +5,17 @@
 과제 저장소~.~
 
 ### 피드백
-- **HW 3** <br>
+- **HW 1** (100/100)
+
+- **HW 2** (100/100)
+
+- **HW 3** (100/100) <br>
 2(c) note that you have to execute `res = forwardProp(input,w)` just one more time after 1000 iterations. (이 부분은 감점 x )
+
+- **HW 4** (100/100)
+
+- **HW 5**
+
+- **HW 6**
+
+- **파이널**
