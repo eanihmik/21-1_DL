@@ -16,7 +16,7 @@
 
 - **HW 5** (100/100)
 
-- **HW 6** (90/100)
+- **HW 6** (90/100) <br>
 1(e) explain why 60wks performs best among them
 
 - **파이널**
